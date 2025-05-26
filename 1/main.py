@@ -55,6 +55,9 @@ class Value:
     def tanh(self):
         return Value(tanh(self.value), (self,), op='tanh') 
 
+    def relu(self):
+        return Value(max(0, self.value), (self,), op='relu')
+
     def backward(self, init=False):
         if init:
             self.grad = 1.0
@@ -71,9 +74,13 @@ class Value:
                 parent.backward()
         elif self.op == "**":
             self.parents[0].grad += self.grad * (self.parents[1].value * self.parents[0].value ** (self.parents[1].value - 1)) 
-            self.parent[0].backward()
+            self.parents[0].backward()
         elif self.op == 'tanh':
             self.parents[0].grad += self.grad * (1 - tanh(self.parents[0].value) ** 2)
+            self.parents[0].backward()
+        elif self.op == 'relu':
+            if self.parents[0].value > 0:
+                self.parents[0].grad += self.grad
             self.parents[0].backward()
 
     def reset_grad(self):
@@ -83,6 +90,7 @@ class Value:
 
 
 # Example usage
-a = (Value(2.0) + Value(3.0) * Value(4.0) + Value(5.0) ** Value(2.0)).tanh() 
+a = (Value(2.0) + Value(3.0) * Value(4.0) + Value(5.0) ** Value(2.0)).relu() 
+a.backward(init=True)
 graph = visualize_value(a)
 graph.render('value_graph', view=True)
