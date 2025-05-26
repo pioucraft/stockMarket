@@ -1,4 +1,5 @@
 from graphviz import Digraph
+from math import tanh
 
 def visualize_value(value, graph=None, seen=None):
     if graph is None:
@@ -49,7 +50,10 @@ class Value:
         return Value(self.value * other.value, (self, other), op='*')
 
     def __pow__(self, other):
-        return Value(self.value ** other, (self, other), op='**')
+        return Value(self.value ** other.value, (self, other), op='**')
+    
+    def tanh(self):
+        return Value(tanh(self.value), (self,), op='tanh') 
 
     def backward(self, init=False):
         if init:
@@ -66,9 +70,11 @@ class Value:
             for parent in self.parents:
                 parent.backward()
         elif self.op == "**":
-            self.parents[0].grad += self.grad * (self.parents[1].value * self.value ** (self.parents[1].value - 1))
-            for parent in self.parents:
-                parent.backward()
+            self.parents[0].grad += self.grad * (self.parents[1].value * self.parents[0].value ** (self.parents[1].value - 1)) 
+            self.parent[0].backward()
+        elif self.op == 'tanh':
+            self.parents[0].grad += self.grad * (1 - tanh(self.parents[0].value) ** 2)
+            self.parents[0].backward()
 
     def reset_grad(self):
         self.grad = 0.0
@@ -76,7 +82,7 @@ class Value:
             parent.reset_grad()
 
 
-a = Value(1) + Value(2) * Value(10) + Value(3) * (Value(4) * Value(6) + Value(5))
-b = Value(3)**2
-graph = visualize_value(b)
+# Example usage
+a = (Value(2.0) + Value(3.0) * Value(4.0) + Value(5.0) ** Value(2.0)).tanh() 
+graph = visualize_value(a)
 graph.render('value_graph', view=True)

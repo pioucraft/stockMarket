@@ -1,0 +1,42 @@
+digraph {
+	rankdir=LR
+	123594292315472 [label="value=1.0000
+grad=0.0000
+op=tanh" fillcolor=lightyellow shape=ellipse style=filled]
+	123594295411792 [label="value=39.0000
+grad=0.0000
+op=+" fillcolor=lightyellow shape=ellipse style=filled]
+	123594293868272 [label="value=14.0000
+grad=0.0000
+op=+" fillcolor=lightyellow shape=ellipse style=filled]
+	123594293745312 [label="value=2.0000
+grad=0.0000
+(op=None)" fillcolor=lightyellow shape=ellipse style=filled]
+	123594293745312 -> 123594293868272
+	123594293867968 [label="value=12.0000
+grad=0.0000
+op=*" fillcolor=lightyellow shape=ellipse style=filled]
+	123594292414736 [label="value=3.0000
+grad=0.0000
+(op=None)" fillcolor=lightyellow shape=ellipse style=filled]
+	123594292414736 -> 123594293867968
+	123594292415376 [label="value=4.0000
+grad=0.0000
+(op=None)" fillcolor=lightyellow shape=ellipse style=filled]
+	123594292415376 -> 123594293867968
+	123594293867968 -> 123594293868272
+	123594293868272 -> 123594295411792
+	123594292274016 [label="value=25.0000
+grad=0.0000
+op=**" fillcolor=lightyellow shape=ellipse style=filled]
+	123594299897136 [label="value=5.0000
+grad=0.0000
+(op=None)" fillcolor=lightyellow shape=ellipse style=filled]
+	123594299897136 -> 123594292274016
+	123594295612000 [label="value=2.0000
+grad=0.0000
+(op=None)" fillcolor=lightyellow shape=ellipse style=filled]
+	123594295612000 -> 123594292274016
+	123594292274016 -> 123594295411792
+	123594295411792 -> 123594292315472
+}
