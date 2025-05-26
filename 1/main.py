@@ -1,4 +1,4 @@
-from math import tanh
+from math import tanh, exp, log
 import random
 
 class Value:
@@ -7,60 +7,76 @@ class Value:
         self.parents = parents
         self.op = op
         self.grad = grad
+        self._backward = lambda:None
 
     def __repr__(self):
         return f"(value: {self.value},  op: {self.op}, grad: {self.grad}, parents: {self.parents})"
 
     def __add__(self, other):
-        return Value(self.value + other.value, (self, other), op='+')
+        out = Value(self.value + other.value, (self, other), op='+')
+        def backward():
+            self.grad += out.grad
+            other.grad += out.grad
+        out._backward = backward
+        return out
 
     def __sub__(self, other):
-        return Value(self.value - other.value, (self, other), op='-')
+        out = Value(self.value - other.value, (self, other), op='-')
+        def backward():
+            self.grad += out.grad
+            other.grad -= out.grad
+        out._backward = backward
+        return out
 
     def __mul__(self, other):
-        return Value(self.value * other.value, (self, other), op='*')
+        out = Value(self.value * other.value, (self, other), op='*')
+        def backward():
+            self.grad += out.grad * other.value
+            other.grad += out.grad * self.value
+        out._backward = backward
+        return out
 
     def __pow__(self, other):
-        return Value(self.value ** other.value, (self, other), op='**')
-    
+        out = Value(self.value ** other.value, (self, other), op='**')
+        def backward():
+            self.grad += out.grad * (other.value * self.value ** (other.value - 1))
+        out._backward = backward
+        return out 
+
     def tanh(self):
-        return Value(tanh(self.value), (self,), op='tanh') 
+        out = Value(tanh(self.value), (self,), op='tanh')
+        def backward():
+            self.grad += out.grad * (1 - tanh(self.value) ** 2)
+        out._backward = backward
+        return out
 
     def relu(self):
-        return Value(max(0, self.value), (self,), op='relu')
+        out_val = log(1 + exp(self.value))
+        out = Value(out_val, (self,), op='softplus')
+        def backward():
+            self.grad += out.grad * (1 / (1 + exp(-self.value)))
+        out._backward = backward
+        return out
 
     def repr(self):
         return f"Value={self.value}"
 
-    def backward(self, init=False):
-        if init:
-            self.grad = 1.0
+    def backward(self):
 
-        if self.op == "+":
-            for parent in self.parents:
-                parent.grad = self.grad
-            for parent in self.parents:
-                parent.backward()
-        elif self.op == "-":
-            self.parents[0].grad = self.grad
-            self.parents[1].grad = self.grad
-            for parent in self.parents:
-                parent.backward()
-        elif self.op == "*":
-            self.parents[0].grad = self.grad * self.parents[1].value
-            self.parents[1].grad = self.grad * self.parents[0].value
-            for parent in self.parents:
-                parent.backward()
-        elif self.op == "**":
-            self.parents[0].grad = self.grad * (self.parents[1].value * self.parents[0].value ** (self.parents[1].value - 1)) 
-            self.parents[0].backward()
-        elif self.op == 'tanh':
-            self.parents[0].grad = self.grad * (1 - tanh(self.parents[0].value) ** 2)
-            self.parents[0].backward()
-        elif self.op == 'relu':
-            if self.parents[0].value > 0:
-                self.parents[0].grad = self.grad
-            self.parents[0].backward()
+        topo = []
+        visited = set()
+        def build_topo(v):
+            if v not in visited:
+                visited.add(v)
+                for parent in v.parents:
+                    build_topo(parent)
+                topo.append(v)
+        build_topo(self)
+
+        # go one variable at a time and apply the chain rule to get its gradient
+        self.grad = 1
+        for v in reversed(topo):
+            v._backward()
 
     def reset_grad(self):
         self.grad = 0.0
@@ -84,6 +100,8 @@ class Neuron:
             return z.relu()
         else:
             return z.tanh()
+
+
 class Layer:
     def __init__(self, nin, nout, relu=True):
         self.neurons = [Neuron(nin, relu) for _ in range(nout)]
@@ -96,7 +114,7 @@ class MLP:
         self.layers = []
         self.layers.append(Layer(nin, nhin))
         for _ in range(nhidden):
-            self.layers.append(Layer(nhin, nhin))
+            self.layers.append(Layer(nhin, nhin, relu=False))
         self.layers.append(Layer(nhin, nout, relu=False))
         
     def __call__(self, x):
@@ -113,26 +131,24 @@ class MLP:
 
 input_data = [Value(1.0), Value(2.0), Value(3.0)]
 expected_output = [Value(0.5)]
-mlp = MLP(nin=3, nout=1, nhidden=2, nhin=4)
+mlp = MLP(nin=3, nout=1, nhidden=5, nhin=5)
 loss_history = []
 
-for i in range(100):
+for i in range(1000):
     mlp.reset_grads()
     output = mlp(input_data)
     loss = Value(0.0)
     for o, e in zip(output, expected_output):
         loss = loss + (o - e) ** Value(2.0)
-    loss.backward(init=True)
+    loss.backward()
     for layer in mlp.layers:
         for neuron in layer.neurons:
             for j in range(len(neuron.w)):
                 neuron.w[j].value -= 0.01 * neuron.w[j].grad
             neuron.b.value -= 0.01 * neuron.b.grad
     # visualize the parameters
-    print(f"Parameters after iteration {i+1}:")
-    print(f"Iteration {i+1}:")
-    print("Output:", [o.value for o in output])
-    print("Loss:", loss.value)
+    if i % 100 == 0:
+        print(f"Iteration {i}, Loss: {loss.value}")
     loss_history.append(loss.value)
 
 # Plotting the losss history with matplotlib
