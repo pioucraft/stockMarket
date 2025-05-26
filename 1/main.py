@@ -1,37 +1,4 @@
-from graphviz import Digraph
 from math import tanh
-
-def visualize_value(value, graph=None, seen=None):
-    if graph is None:
-        graph = Digraph(format='png')
-        graph.attr(rankdir='LR')  # Left to right layout
-    if seen is None:
-        seen = set()
-
-    # Unique id for each node based on Python's id()
-    node_id = str(id(value))
-
-    if node_id not in seen:
-        seen.add(node_id)
-
-        # Label includes value, grad, and op
-        label = f"value={value.value:.4f}\ngrad={value.grad:.4f}"
-        if value.op:
-            label += f"\nop={value.op}"
-        else:
-            label += "\n(op=None)"
-
-        graph.node(node_id, label=label, shape='ellipse', style='filled', fillcolor='lightyellow')
-
-        for parent in value.parents:
-            parent_id = str(id(parent))
-            # Recursive call to add parent nodes
-            visualize_value(parent, graph, seen)
-            # Edge from parent to this node (reverse of computation flow)
-            graph.edge(parent_id, node_id)
-
-    return graph
-
 
 class Value:
     def __init__(self, value, parents=(), op=None, grad=0.0):
@@ -87,10 +54,3 @@ class Value:
         self.grad = 0.0
         for parent in self.parents:
             parent.reset_grad()
-
-
-# Example usage
-a = (Value(2.0) + Value(3.0) * Value(4.0) + Value(5.0) ** Value(2.0)).relu() 
-a.backward(init=True)
-graph = visualize_value(a)
-graph.render('value_graph', view=True)
