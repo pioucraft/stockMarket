@@ -48,6 +48,9 @@ class Value:
     def __mul__(self, other):
         return Value(self.value * other.value, (self, other), op='*')
 
+    def __pow__(self, other):
+        return Value(self.value ** other, (self, other), op='**')
+
     def backward(self, init=False):
         if init:
             self.grad = 1.0
@@ -62,6 +65,10 @@ class Value:
             self.parents[1].grad += self.grad * self.parents[0].value
             for parent in self.parents:
                 parent.backward()
+        elif self.op == "**":
+            self.parents[0].grad += self.grad * (self.parents[1].value * self.value ** (self.parents[1].value - 1))
+            for parent in self.parents:
+                parent.backward()
 
     def reset_grad(self):
         self.grad = 0.0
@@ -70,10 +77,6 @@ class Value:
 
 
 a = Value(1) + Value(2) * Value(10) + Value(3) * (Value(4) * Value(6) + Value(5))
-print(a)
-a.backward(init=True)
-print(a)
-
-graph = visualize_value(a)
-graph.render('computation_graph', view=True)  # This saves 'computation_graph.png' and opens it
-
+b = Value(3)**2
+graph = visualize_value(b)
+graph.render('value_graph', view=True)
