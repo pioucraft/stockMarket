@@ -1,4 +1,5 @@
 from math import tanh
+import random
 
 class Value:
     def __init__(self, value, parents=(), op=None, grad=0.0):
@@ -54,3 +55,35 @@ class Value:
         self.grad = 0.0
         for parent in self.parents:
             parent.reset_grad()
+
+
+class Neuron:
+    def __init__(self, nin):
+        self.w = [Value(random.uniform(-1, 1)) for _ in range(nin)]
+        self.b = Value(random.uniform(-1, 1))
+    
+    def __call__(self, x):
+        assert len(x) == len(self.w), "Input size must match weights size"
+        z = sum(w_i * x_i for w_i, x_i in zip(self.w, x)) + self.b
+        return z.relu()
+
+
+class Layer:
+    def __init__(self, nin, nout):
+        self.neurons = [Neuron(nin) for _ in range(nout)]
+    
+    def __call__(self, x):
+        return [neuron(x) for neuron in self.neurons]
+
+class MLP:
+    def __init__(self, nin, nout, nhidden, nhin):
+        self.layers = []
+        self.layers.append(Layer(nin, nhin))
+        for _ in range(nhidden):
+            self.layers.append(Layer(nhin, nhin))
+        self.layers.append(Layer(nhin, nout))
+        
+    deff __call__(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return x
