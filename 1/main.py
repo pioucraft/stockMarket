@@ -131,7 +131,7 @@ class MLP:
 
 input_data = [Value(1.0), Value(2.0), Value(3.0)]
 expected_output = [Value(0.5)]
-mlp = MLP(nin=3, nout=1, nhidden=5, nhin=5)
+mlp = MLP(nin=3, nout=1, nhidden=10, nhin=10)
 loss_history = []
 
 for i in range(1000):
