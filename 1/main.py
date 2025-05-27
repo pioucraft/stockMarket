@@ -1,5 +1,6 @@
 from math import tanh, exp, log
 import random
+import numpy as np
 
 class Value:
     def __init__(self, value, parents=(), op=None, grad=0.0):
@@ -93,8 +94,7 @@ class Neuron:
     def __call__(self, x):
         assert len(x) == len(self.w), "Input size must match weights size"
         z = Value(0.0) 
-        for i in range(len(x)):
-            z = z + (self.w[i] * x[i])
+        z = z + np.dot(self.w, x)
         z = z + self.b
         if self.relu:
             return z.relu()
