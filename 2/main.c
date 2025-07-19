@@ -35,6 +35,33 @@ typedef struct NN {
 BackpropValue **parameters;
 int parameters_length = 0;
 
+#define MAX_BACKPROP_POOL_SIZE 4096
+BackpropValue backprop_pool[MAX_BACKPROP_POOL_SIZE];
+int backprop_pool_index = 0;
+
+BackpropValue *getBackpropPtr() {
+    if (backprop_pool_index >= MAX_BACKPROP_POOL_SIZE) {
+        fprintf(stderr, "Backprop pool exhausted!\n");
+        exit(EXIT_FAILURE);
+    }
+    return &backprop_pool[backprop_pool_index++];
+}
+
+
+#define PARENTS_POOL_SIZE (4096 * 8)
+BackpropValue *parents_pool[PARENTS_POOL_SIZE];
+int parents_pool_index = 0;
+
+BackpropValue **getParentPtr(int num) {
+    if(( parents_pool_index + num )> (PARENTS_POOL_SIZE - 10)) {
+        fprintf(stderr, "Parents pool exhausted!\n");
+        exit(EXIT_FAILURE);
+    }
+    BackpropValue **ptr = &parents_pool[parents_pool_index];
+    parents_pool_index += num;
+    return ptr;
+}
+
 int displayValueWithDepth(BackpropValue *bv, int depth) {
     printf("%i Value: %f, Parents: %p, NumParents: %d, Operation: %c, Grad : %f\n",
            bv->id, bv->value, bv->parents, bv->num_parents,
@@ -54,7 +81,7 @@ int displayValue(BackpropValue *bv) {
 int addValues(BackpropValue *a, BackpropValue *b, BackpropValue *result) {
     result->value = a->value + b->value;
 
-    result->parents = malloc(sizeof(BackpropValue*) * 2);
+    result->parents = getParentPtr(2);
     result->parents[0] = a;
     result->parents[1] = b;
     result->num_parents = 2;
@@ -65,7 +92,7 @@ int addValues(BackpropValue *a, BackpropValue *b, BackpropValue *result) {
 int subtractValues(BackpropValue *a, BackpropValue *b, BackpropValue *result) {
     result->value = a->value - b->value;
 
-    result->parents = malloc(sizeof(BackpropValue*) * 2);
+    result->parents = getParentPtr(2);
     result->parents[0] = a;
     result->parents[1] = b;
     result->num_parents = 2;
@@ -76,7 +103,7 @@ int subtractValues(BackpropValue *a, BackpropValue *b, BackpropValue *result) {
 int multiplyValues(BackpropValue *a, BackpropValue *b, BackpropValue *result) {
     result->value = a->value * b->value;
 
-    result->parents = malloc(sizeof(BackpropValue*) * 2);
+    result->parents = getParentPtr(2);
     result->parents[0] = a;
     result->parents[1] = b;
     result->num_parents = 2;
@@ -87,7 +114,7 @@ int multiplyValues(BackpropValue *a, BackpropValue *b, BackpropValue *result) {
 int tanhValue(BackpropValue *a, BackpropValue *result) {
     result->value = tanhf(a->value);
 
-    result->parents = malloc(sizeof(BackpropValue*) * 1);
+    result->parents = getParentPtr(1);
     result->parents[0] = a;
     result->num_parents = 1;
     result->operation = 'T'; // No operation
@@ -146,6 +173,7 @@ int backwardValue(BackpropValue *bv) {
     // start by doing topological sort.
     BackpropValue **topo = NULL;
     int *topo_length = malloc(sizeof(int));
+    *topo_length = 0;
 
     buildTopo(bv, &topo, topo_length);
 
@@ -211,11 +239,11 @@ int callNeuron(Neuron *n, BackpropValue **inputs, BackpropValue *output) {
         if(act != NULL) {
             oldAct = act;
         } else {
-            oldAct = malloc(sizeof(BackpropValue));
+            oldAct = getBackpropPtr();
             createValue(0.0f, oldAct);
         }
 
-        act = malloc(sizeof(BackpropValue));
+        act = getBackpropPtr();
         createValue(0.0f, act); // Initialize activation value
         
         BackpropValue *weighted_input = malloc(sizeof(BackpropValue));
@@ -384,6 +412,7 @@ int lossFunction(NN *nn) {
 }
 
 int main() {
+    srand(91);
     parameters = malloc(sizeof(BackpropValue*) * 1);
 
     /*
