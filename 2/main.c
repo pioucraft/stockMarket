@@ -185,10 +185,29 @@ int createNeuron(int nin, Neuron *n) {
 }
 
 int callNeuron(Neuron *n, BackpropValue **inputs, BackpropValue *output) {
+    BackpropValue *act = NULL;
+    BackpropValue *oldAct = NULL;
     for(int i = 0; i < n->nin; i++) {
+        if(act != NULL) {
+            oldAct = act;
+        } else {
+            oldAct = malloc(sizeof(BackpropValue));
+            createValue(0.0f, oldAct);
+            act = malloc(sizeof(BackpropValue));
+            createValue(0.0f, act);
+        }
+        
         BackpropValue *weighted_input = malloc(sizeof(BackpropValue));
         multiplyValues(n->w[i], inputs[i], weighted_input);
+
+        addValues(oldAct, weighted_input, act);
     }
+    // Add the bias
+    BackpropValue *final_act = malloc(sizeof(BackpropValue));
+    addValues(act, n->b, final_act);
+    // Apply activation function (tanh)
+    tanhValue(final_act, output);
+    return 0;
 }
 
 int createLayer(int nin, int nout, Layer *l) {
@@ -230,6 +249,20 @@ int createNN(int nin, int nout, int n_layers, NN *nn, int nhin) {
 int main() {
     Layer *layer = malloc(sizeof(Layer));
     createLayer(3, 2, layer);
+
+    Neuron *neuron = malloc(sizeof(Neuron));
+    createNeuron(5, neuron);
+    // call neuron with placeholder values
+    BackpropValue **inputs = malloc(sizeof(BackpropValue*) * 5);
+    for(int i = 0; i < 5; i++) {
+        inputs[i] = malloc(sizeof(BackpropValue));
+        createValue((float)i, inputs[i]); // Initialize with some values
+    }
+    BackpropValue *output = malloc(sizeof(BackpropValue));
+    createValue(0.0f, output); // Initialize output value
+    callNeuron(neuron, inputs, output);
+    displayValue(output);
+    
 
     return 0; 
 }
