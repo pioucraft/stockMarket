@@ -2,7 +2,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define HI printf("Hello, World!\n");
+
 typedef struct BackpropValue {
+    int id;
     float value;
     struct BackpropValue **parents;
     int num_parents;
@@ -29,9 +32,12 @@ typedef struct NN {
     int nhin; // Number of hidden neurons in every layer of the hidden layers
 } NN;
 
+BackpropValue **parameters;
+int parameters_length = 0;
+
 int displayValueWithDepth(BackpropValue *bv, int depth) {
-    printf("%p Value: %f, Parents: %p, NumParents: %d, Operation: %c, Grad : %f\n",
-           (void *)bv, bv->value, bv->parents, bv->num_parents,
+    printf("%i Value: %f, Parents: %p, NumParents: %d, Operation: %c, Grad : %f\n",
+           bv->id, bv->value, bv->parents, bv->num_parents,
            bv->operation, bv->grad);
     if (depth > 0 && bv->num_parents > 0) {
         for (int i = 0; i < bv->num_parents; i++) {
@@ -89,10 +95,7 @@ int tanhValue(BackpropValue *a, BackpropValue *result) {
 }
 
 int buildTopo(BackpropValue *bv, BackpropValue ***topo, int *index) {
-    printf("Building topo for %p\n", (void *)bv);
     for(int i = 0; i < bv->num_parents; i++) {
-        // topo = realloc(topo, sizeof(BackpropValue *) * (index + 1));
-        // check if the parent has been visited
         int found = 0;
         for(int j = 0; j < *index; j++) {
             if ((*topo)[j] == (bv->parents[i])) {
@@ -109,7 +112,6 @@ int buildTopo(BackpropValue *bv, BackpropValue ***topo, int *index) {
     }
     return 0;
 }
-
 int _backwardValue(BackpropValue *bv) {
     if(bv->operation == '_') {
         return 0;
@@ -149,19 +151,22 @@ int backwardValue(BackpropValue *bv) {
 
     bv->grad = 1.0f; // Set the gradient of the output value to 1.0
     _backwardValue(bv);
-    for(int i = *topo_length-1; i >= 0; i--) {
+
+    // It's -2, because we add an index++ at the end of buildTopo
+    for(int i = *topo_length-2; i >= 0; i--) {
         _backwardValue(topo[i]);
     }
 
     free(topo);
     free(topo_length);
 
-    displayValueWithDepth(bv, 2); // Display the values with depth 2
-    
     return 0;
 }
 
 int createValue(float value, BackpropValue *bv) {
+    static int id_counter = 0; // Static counter to assign unique IDs
+    
+    bv->id = id_counter++;
     bv->value = value;
     bv->parents = NULL;
     bv->num_parents = 0;
@@ -177,10 +182,23 @@ int createNeuron(int nin, Neuron *n) {
         // random float between -1.0 and 1.0
         float random_value = ((float)rand() / RAND_MAX) * 2.0f - 1.0f; // Random float in [-1, 1]
         n->w[i] = malloc(sizeof(BackpropValue));
+
+        // add to parameters
+
+        parameters_length++;
+        parameters = realloc(parameters, sizeof(BackpropValue*) * parameters_length);
+        parameters[parameters_length - 1] = n->w[i];
+        
         createValue(random_value, n->w[i]);
     }
     float random_bias = ((float)rand() / RAND_MAX) * 2.0f - 1.0f; // Random float in [-1, 1]
     n->b = malloc(sizeof(BackpropValue));
+    
+    // add to parameters
+    parameters_length++;
+    parameters = realloc(parameters, sizeof(BackpropValue*) * parameters_length);
+    parameters[parameters_length - 1] = n->b;
+
     createValue(random_bias, n->b);
     return 0;
 }
@@ -188,25 +206,32 @@ int createNeuron(int nin, Neuron *n) {
 int callNeuron(Neuron *n, BackpropValue **inputs, BackpropValue *output) {
     BackpropValue *act = NULL;
     BackpropValue *oldAct = NULL;
+
     for(int i = 0; i < n->nin; i++) {
         if(act != NULL) {
             oldAct = act;
         } else {
             oldAct = malloc(sizeof(BackpropValue));
             createValue(0.0f, oldAct);
-            act = malloc(sizeof(BackpropValue));
-            createValue(0.0f, act);
         }
+
+        act = malloc(sizeof(BackpropValue));
+        createValue(0.0f, act); // Initialize activation value
         
         BackpropValue *weighted_input = malloc(sizeof(BackpropValue));
+        createValue(0.0f, weighted_input);
         multiplyValues(n->w[i], inputs[i], weighted_input);
-
+        
         addValues(oldAct, weighted_input, act);
     }
+
     // Add the bias
     BackpropValue *final_act = malloc(sizeof(BackpropValue));
+    createValue(0.0f, final_act); // Initialize final activation value
     addValues(act, n->b, final_act);
+
     // Apply activation function (tanh)
+    createValue(0.0f, output); // Initialize output value
     tanhValue(final_act, output);
     return 0;
 }
@@ -277,9 +302,104 @@ int callNN(NN *nn, BackpropValue **inputs, BackpropValue **outputs) {
     return 0;
 }
 
+void dumpGraphviz(FILE *f, BackpropValue *v, int *visited, int max_nodes) {
+    if (visited[v->id]) return;
+    visited[v->id] = 1;
+
+    fprintf(f, "v%d [label=\"id:%d\\nval:%.2f\\ngrad:%.2f\\nop:%c\"];\n",
+            v->id, v->id, v->value, v->grad, v->operation);
+
+    for (int i = 0; i < v->num_parents; i++) {
+        fprintf(f, "v%d -> v%d;\n", v->parents[i]->id, v->id);
+        dumpGraphviz(f, v->parents[i], visited, max_nodes);
+    }
+}
+
+void writeDotFile(BackpropValue *output, const char *filename, int total_values) {
+    FILE *f = fopen(filename, "w");
+    if (!f) {
+        fprintf(stderr, "Could not open %s for writing.\n", filename);
+        return;
+    }
+
+    fprintf(f, "digraph G {\n");
+    int *visited = calloc(total_values, sizeof(int));
+    dumpGraphviz(f, output, visited, total_values);
+    free(visited);
+    fprintf(f, "}\n");
+    fclose(f);
+}
+
+int lossFunction(NN *nn) {
+    BackpropValue **inputs = malloc(sizeof(BackpropValue*) * 3);
+    for(int i = 0; i < 3; i++) {
+        inputs[i] = malloc(sizeof(BackpropValue));
+        createValue((float)i, inputs[i]); // Initialize with some values
+    }
+
+    BackpropValue **outputs = malloc(sizeof(BackpropValue*) * 2);
+    callNN(nn, inputs, outputs);
+    
+
+    // calculate loss
+    BackpropValue *act = NULL;
+    BackpropValue *oldAct = NULL;
+
+    for(int i = 0;i < 2; i++) {
+        if(act != NULL) {
+            oldAct = act;
+        } else {
+            oldAct = malloc(sizeof(BackpropValue));
+            createValue(0.0f, oldAct);
+        }
+
+        act = malloc(sizeof(BackpropValue));
+        createValue(0.0f, act); // Initialize activation value
+
+        BackpropValue *target = malloc(sizeof(BackpropValue));
+        createValue(((float)i)/3.0f, target); // Initialize target values
+
+        BackpropValue *local_loss = malloc(sizeof(BackpropValue));
+        createValue(0.0f, local_loss); // Initialize local loss value
+        subtractValues(outputs[i], target, local_loss); // Calculate loss
+
+        BackpropValue *local_loss_final = malloc(sizeof(BackpropValue));
+        createValue(0.0f, local_loss_final); // Initialize final loss value
+        multiplyValues(local_loss, local_loss, local_loss_final); // Square the loss
+
+        addValues(oldAct, local_loss_final, act); // Accumulate the loss
+    }
+
+    BackpropValue *loss = malloc(sizeof(BackpropValue));
+    createValue(0.0f, loss); // Initialize loss value
+    
+    BackpropValue *loss_normalizer = malloc(sizeof(BackpropValue));
+    createValue(1.0f / 3.0f, loss_normalizer); // Normalizer for the loss
+    multiplyValues(act, loss_normalizer, loss); // Normalize the loss
+    printf("Loss: %f\n", loss->value);
+    // Backward pass
+    resetGrad(loss);
+    backwardValue(loss);
+    return 0;
+}
+
 int main() {
+    parameters = malloc(sizeof(BackpropValue*) * 1);
+
     /*
-        * EXAMPLE USAGE FOR NEURON CALLING
+    // EXAMPLE USAGE FOR BACKPROP VALUE
+    BackpropValue *bv1 = malloc(sizeof(BackpropValue));
+    BackpropValue *bv2 = malloc(sizeof(BackpropValue));
+    BackpropValue *result = malloc(sizeof(BackpropValue));
+    createValue(3.0f, bv1);
+    createValue(4.0f, bv2);
+    createValue(0.0f, result); // Initialize result value
+    addValues(bv1, bv2, result);
+    writeDotFile(result, "result.dot", 3);
+    */
+
+    /*
+    // EXAMPLE USAGE FOR NEURON
     Neuron *neuron = malloc(sizeof(Neuron));
     createNeuron(5, neuron);
     BackpropValue **inputs = malloc(sizeof(BackpropValue*) * 5);
@@ -290,11 +410,11 @@ int main() {
     BackpropValue *output = malloc(sizeof(BackpropValue));
     createValue(0.0f, output); // Initialize output value
     callNeuron(neuron, inputs, output);
-    displayValue(output);
-    */ 
+    writeDotFile(output, "result.dot", 1024);
+    */
 
     /*
-        * EXAMPLE USAGE FOR LAYER CALLING
+    // EXAMPLE USAGE FOR LAYER CALLING
     Layer *layer = malloc(sizeof(Layer));
     createLayer(3, 2, layer);
 
@@ -313,20 +433,16 @@ int main() {
     */
 
     NN *nn = malloc(sizeof(NN));
-    createNN(3, 2, 3, nn, 4); // Create a neural network with 3 layers, input size 3, output size 2, and hidden neurons size 4
+    createNN(3, 2, 6, nn, 20); // Create a neural network with 3 layers, input size 3, output size 2, and hidden neurons size 4
+    printf("%d parameters\n", parameters_length);
+    lossFunction(nn); // Calculate the loss and perform backpropagation
 
-    BackpropValue **inputs = malloc(sizeof(BackpropValue*) * 3);
-    for(int i = 0; i < 3; i++) {
-        inputs[i] = malloc(sizeof(BackpropValue));
-        createValue((float)i, inputs[i]); // Initialize with some values
+    for(int i = 0; i < parameters_length; i++) {
+        // optimise the loss
+        parameters[i]->value -= parameters[i]->grad * 0.01f; // Simple gradient descent step
     }
-
-    BackpropValue **outputs = malloc(sizeof(BackpropValue*) * 2);
-    callNN(nn, inputs, outputs);
-    for(int i = 0; i < 2; i++) {
-        backwardValue(outputs[i]); // Backward pass for each output
-        displayValue(outputs[i]);
-    }
+    lossFunction(nn); // Recalculate the loss after optimization
+    
 
     return 0; 
 }
