@@ -8,10 +8,11 @@ typedef struct Neuron {
     TYPE* weights;
     int num_weights;
     TYPE bias;
-    TYPE value;
+    TYPE value; // NOT MEMORY EFFICIENT
 
-    TYPE bias_grad; // NOT MEMORY EFFICIENT WHEN DOING INFERENCE
-    TYPE* weights_grad; // Gradient for each weight // NOT MEMORY EFFICIENT WHEN DOING INFERENCE
+    TYPE value_grad; // NOT MEMORY EFFICIENT
+    TYPE* weights_grad; // NOT MEMORY EFFICIENT
+    TYPE bias_grad; // NOT MEMORY EFFICIENT
 } Neuron;
 
 typedef struct Layer {
@@ -44,8 +45,14 @@ NN* createNN(int nin, int nout, int nlayers) {
             nn->layers[i].neurons[j].bias = ((TYPE)rand() / (TYPE)RAND_MAX * (TYPE)2.0 - (TYPE)1.0); // Random bias between -1 and 1
             nn->layers[i].neurons[j].num_weights = weights_size;
 
+            nn->layers[i].neurons[j].value_grad = 0.0; // Initialize gradient for value
+            nn->layers[i].neurons[j].weights_grad = malloc(weights_size * sizeof(TYPE)); // Initialize gradient for weights
+            nn->layers[i].neurons[j].bias_grad = 0.0; // Initialize gradient for bias
+
             for (int k = 0; k < weights_size; k++) {
                 nn->layers[i].neurons[j].weights[k] = ((TYPE)rand() / (TYPE)RAND_MAX * (TYPE)2.0 - (TYPE)1.0); // Random weight between -1 and 1
+
+                nn->layers[i].neurons[j].weights_grad[k] = 0.0; // Initialize weight gradient
             }
         }
     }
@@ -73,7 +80,8 @@ TYPE* callNN(NN* nn, TYPE* inputs) {
             // Apply activation function (ReLu if hidden, tanh if output)
             if (i < nn->num_layers - 1) {
                 // ReLU activation for hidden layers
-                neuron->value = (neuron->value > 0) ? neuron->value : 0;
+                // don't do relu, instead use the weird relu taht doesn't get to 0
+                neuron->value = (neuron->value > 0) ? neuron->value : 0.01 * neuron->value; // Leaky ReLU
             } else {
                 // tanh activation for output layer
                 neuron->value = tanh(neuron->value); // IMPORTANT: tanh function is used here, tanh function accepts DOUBLE values, if I change the TYPE to float, it might not work correctly...
@@ -107,8 +115,9 @@ void visualiseNN(NN* nn) {
 int main() {
     int nin = 3; // Number of input features
     int nout = 2; // Number of output neurons
-    int nlayers = 3; // Total number of layers
+    int nlayers = 30; // Total number of layers
 
+    srand(42); // Seed for reproducibility
     NN* nn = createNN(nin, nout, nlayers);
 
     // create some inputs and outputs
@@ -127,21 +136,78 @@ int main() {
     for (int i = 0; i < 100; i++) { // 100 training cycles
         // calculate loss
         TYPE total_loss = 0.0;
+        // Reset gradients
+        for (int l = 0; l < nn->num_layers; l++) {
+            for (int m = 0; m < nn->layers[l].num_neurons; m++) {
+                nn->layers[l].neurons[m].value_grad = 0.0;
+                nn->layers[l].neurons[m].bias_grad = 0.0;
+                for (int k = 0; k < nn->layers[l].neurons[m].num_weights; k++) {
+                    nn->layers[l].neurons[m].weights_grad[k] = 0.0;
+                }
+            }
+        }
         for (int j = 0; j < 3; j++) {
             TYPE* output = callNN(nn, inputs[j]);
+
+
             for (int k = 0; k < nout; k++) {
                 TYPE loss = outputs[j][k] - output[k];
                 loss *= loss; // Squared loss
                 total_loss += loss;
-                // The plan. it's not really orthodox, but it could work.
                 // 0. Reset gradients BEFORE this current loop starts.
                 // 1. In HERE, in the current loop of the input, we do the backpropagation and we add the gradients to each weights and biases,
                 // 2. After the loop ends, we will have all the gradients accumulated for each weight and bias.
                 // 3. After the loop ends, we will update the weights and biases using the accumulated gradients. We will do -0.01 * gradient / outputs_sample_size, because we don't want to overupdate when we have more samples.
+
+                // Backpropagation
+                for (int l = nn->num_layers - 1; l >= 0; l--) {
+                    for (int m = 0; m < nn->layers[l].num_neurons; m++) {
+                        Neuron* neuron = &nn->layers[l].neurons[m];
+
+                        // Calculate gradient for output layer
+                        if (l == nn->num_layers - 1) {
+                            TYPE local_loss = outputs[j][k] - neuron->value; // Loss for the current output neuron
+                            neuron->value_grad = -2 * local_loss * (1 - tanh(neuron->value) * tanh(neuron->value)); // Derivative of tanh
+                        } else {
+                            // For hidden layers, use the gradient from the next layer
+                            neuron->value_grad = 0.0;
+                            for (int n = 0; n < nn->layers[l + 1].num_neurons; n++) {
+                                neuron->value_grad += nn->layers[l + 1].neurons[n].weights[m] * nn->layers[l + 1].neurons[n].value_grad;
+                            }
+                            neuron->value_grad *= (neuron->value > 0) ? 1 : 0.01; // Leaky ReLU derivative
+                        }
+
+                        // Update bias gradient
+                        neuron->bias_grad += neuron->value_grad;
+
+                        // Update weights gradients
+                        for (int k = 0; k < neuron->num_weights; k++) {
+                            if (l == 0) {
+                                // Input layer
+                                neuron->weights_grad[k] += inputs[j][k] * neuron->value_grad;
+                            } else {
+                                // Hidden and output layers
+                                neuron->weights_grad[k] += nn->layers[l - 1].neurons[k].value * neuron->value_grad;
+                            }
+                        }
+                    }
+                }
             }
         }
 
         printf("Epoch %d, Loss: %f\n", i, total_loss);
+
+        // Update weights and biases
+        for (int l = 0; l < nn->num_layers; l++) {
+            for (int m = 0; m < nn->layers[l].num_neurons; m++) {
+                Neuron* neuron = &nn->layers[l].neurons[m];
+                neuron->bias -= 0.0001 * neuron->bias_grad / 3; // Update bias
+
+                for (int k = 0; k < neuron->num_weights; k++) {
+                    neuron->weights[k] -= 0.0001 * neuron->weights_grad[k] / 3; // Update weights
+                }
+            }
+        }
     }
 
     return 0;
