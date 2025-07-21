@@ -3,10 +3,11 @@
 #include <stdlib.h>
 
 #define TYPE double 
-#define LEARNING_RATE 1e-2
+#define LEARNING_RATE 1e-3
 
-#define NUM_LAYERS 3
-#define NUM_NEURONS 3
+#define NUM_LAYERS 5
+#define NUM_NEURONS 30
+#define TRAINING_CYCLES 10000
 
 
 typedef struct Neuron {
@@ -134,6 +135,13 @@ void visualiseNN(NN* nn) {
 }
 
 int main() {
+    FILE *loss_file = fopen("loss.csv", "w");
+    if (!loss_file) {
+        perror("Failed to open loss.csv");
+        return 1;
+    }
+
+
     int nin = 3; // Number of input features
     int nout = 2; // Number of output neurons
     int nlayers = NUM_LAYERS; // Total number of layers
@@ -154,7 +162,8 @@ int main() {
         {0.5, 0.6}
     };
 
-    for (int i = 0; i < 100; i++) { // 100 training cycles
+    TYPE last_loss = 100000.0; // Initialize a large last loss value to ensure the first loss is always smaller
+    for (int i = 0; i < TRAINING_CYCLES; i++) {
         // calculate loss
         TYPE total_loss = 0.0;
         // Reset gradients
@@ -170,53 +179,49 @@ int main() {
         for (int j = 0; j < 3; j++) {
             TYPE* output = callNN(nn, inputs[j]);
 
+            for(int k = nn->num_layers -1; k >= 0; k--) {
+                for(int l = 0; l < nn->layers[k].num_neurons; l++) {
+                    Neuron* neuron = &nn->layers[k].neurons[l];
 
-            for (int k = 0; k < nout; k++) {
-                TYPE loss = outputs[j][k] - output[k];
-                loss *= loss; // Squared loss
-                total_loss += loss;
-                // 0. Reset gradients BEFORE this current loop starts.
-                // 1. In HERE, in the current loop of the input, we do the backpropagation and we add the gradients to each weights and biases,
-                // 2. After the loop ends, we will have all the gradients accumulated for each weight and bias.
-                // 3. After the loop ends, we will update the weights and biases using the accumulated gradients. We will do -0.01 * gradient / outputs_sample_size, because we don't want to overupdate when we have more samples.
-
-                // Backpropagation
-                for (int l = nn->num_layers - 1; l >= 0; l--) {
-                    for (int m = 0; m < nn->layers[l].num_neurons; m++) {
-                        Neuron* neuron = &nn->layers[l].neurons[m];
-
-                        // Calculate gradient for output layer
-                        if (l == nn->num_layers - 1) {
-                            TYPE local_loss = outputs[j][k] - neuron->value; // Loss for the current output neuron
-                            neuron->value_grad = -2 * local_loss * (1 - tanh(neuron->value) * tanh(neuron->value)); // Derivative of tanh
-                        } else {
-                            // For hidden layers, use the gradient from the next layer
-                            neuron->value_grad = 0.0;
-                            for (int n = 0; n < nn->layers[l + 1].num_neurons; n++) {
-                                neuron->value_grad += nn->layers[l + 1].neurons[n].weights[m] * nn->layers[l + 1].neurons[n].value_grad;
-                            }
-                            neuron->value_grad *= (neuron->value > 0) ? 1 : 0.01; // Leaky ReLU derivative
+                    if (k == nn->num_layers - 1) {
+                        // Output layer: each neuron only for its own output!
+                        TYPE error = outputs[j][l] - output[l];
+                        TYPE loss = error * error;
+                        TYPE derivative = -2.0 * error;
+                        total_loss += loss;
+                        neuron->value_grad = derivative * (1.0 - output[l] * output[l]);
+                    } else {
+                        TYPE sum_grad = 0.0;
+                        for (int m = 0; m < nn->layers[k + 1].num_neurons; m++) {
+                            sum_grad += nn->layers[k + 1].neurons[m].weights[l] * nn->layers[k + 1].neurons[m].value_grad;
                         }
+                        neuron->value_grad = sum_grad * ((neuron->value > 0) ? 1.0 : 0.01); // Leaky ReLU derivative
+                    }
+                    neuron->bias_grad += neuron->value_grad; // Accumulate bias gradient
 
-                        // Update bias gradient
-                        neuron->bias_grad += neuron->value_grad;
-
-                        // Update weights gradients
-                        for (int k = 0; k < neuron->num_weights; k++) {
-                            if (l == 0) {
-                                // Input layer
-                                neuron->weights_grad[k] += inputs[j][k] * neuron->value_grad;
-                            } else {
-                                // Hidden and output layers
-                                neuron->weights_grad[k] += nn->layers[l - 1].neurons[k].value * neuron->value_grad;
-                            }
+                    for (int m = 0; m < neuron->num_weights; m++) {
+                        if (k == 0) {
+                            // Input layer
+                            neuron->weights_grad[m] += neuron->value_grad * inputs[j][m];
+                        } else {
+                            // Hidden and output layers
+                            neuron->weights_grad[m] += neuron->value_grad * nn->layers[k - 1].neurons[m].value;
                         }
                     }
                 }
             }
         }
 
-        printf("Epoch %d, Loss: %f\n", i, total_loss);
+        /*
+        if(last_loss < total_loss) {
+            printf("Loss increased from %.15f to %.15f at cycle %d, stopping training.\n", last_loss, total_loss, i);
+        }
+        */
+        if(i % 1000 == 0) {
+            printf("Cycle %d, Loss: %.15f\n", i, total_loss);
+        }
+        fprintf(loss_file, "%d,%.15f\n", i, total_loss);
+        last_loss = total_loss; // Update last loss
 
         // Update weights and biases
         for (int l = 0; l < nn->num_layers; l++) {
@@ -230,7 +235,6 @@ int main() {
             }
         }
     }
-    visualiseNN(nn);
 
     return 0;
 }
