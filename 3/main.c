@@ -3,6 +3,11 @@
 #include <stdlib.h>
 
 #define TYPE double 
+#define LEARNING_RATE 1e-2
+
+#define NUM_LAYERS 3
+#define NUM_NEURONS 3
+
 
 typedef struct Neuron {
     TYPE* weights;
@@ -35,14 +40,23 @@ NN* createNN(int nin, int nout, int nlayers) {
     nn->layers = malloc(nlayers * sizeof(Layer));
 
     for (int i = 0; i < nlayers; i++) {
-        nn->layers[i].num_neurons = (i == nlayers - 1) ? nout : 10; // Example: 10 neurons in hidden layers
+        nn->layers[i].num_neurons = (i == nlayers - 1) ? nout : NUM_NEURONS; // Example: 10 neurons in hidden layers
         nn->layers[i].neurons = malloc(nn->layers[i].num_neurons * sizeof(Neuron));
         
         for (int j = 0; j < nn->layers[i].num_neurons; j++) {
             int weights_size = (i == 0) ? nin : nn->layers[i - 1].num_neurons;
 
             nn->layers[i].neurons[j].weights = malloc(weights_size * sizeof(TYPE));
-            nn->layers[i].neurons[j].bias = ((TYPE)rand() / (TYPE)RAND_MAX * (TYPE)2.0 - (TYPE)1.0); // Random bias between -1 and 1
+
+            TYPE random_bias = ((TYPE)rand() / (TYPE)RAND_MAX * (TYPE)2.0 - (TYPE)1.0); // Random bias between -1 and 1
+            if(i == nlayers - 1) {
+                // tanh
+                nn->layers[i].neurons[j].bias = random_bias * sqrt(1.0 / (TYPE)weights_size); // Scale bias for output layer
+            } else {
+                // ReLU
+                nn->layers[i].neurons[j].bias = random_bias * sqrt(2.0 / (TYPE)weights_size); // Scale bias for hidden layers
+            }
+
             nn->layers[i].neurons[j].num_weights = weights_size;
 
             nn->layers[i].neurons[j].value_grad = 0.0; // Initialize gradient for value
@@ -50,7 +64,14 @@ NN* createNN(int nin, int nout, int nlayers) {
             nn->layers[i].neurons[j].bias_grad = 0.0; // Initialize gradient for bias
 
             for (int k = 0; k < weights_size; k++) {
-                nn->layers[i].neurons[j].weights[k] = ((TYPE)rand() / (TYPE)RAND_MAX * (TYPE)2.0 - (TYPE)1.0); // Random weight between -1 and 1
+                TYPE random_weight = ((TYPE)rand() / (TYPE)RAND_MAX * (TYPE)2.0 - (TYPE)1.0); // Random weight between -1 and 1
+                if (i == nlayers - 1) {
+                    // tanh
+                    nn->layers[i].neurons[j].weights[k] = random_weight * sqrt(1.0 / (TYPE)weights_size); // Scale weights for output layer
+                } else {
+                    // ReLU
+                    nn->layers[i].neurons[j].weights[k] = random_weight * sqrt(2.0 / (TYPE)weights_size); // Scale weights for hidden layers
+                }
 
                 nn->layers[i].neurons[j].weights_grad[k] = 0.0; // Initialize weight gradient
             }
@@ -105,9 +126,9 @@ void visualiseNN(NN* nn) {
             printf("[");
             for(int k = 0; k < nn->layers[i].neurons[j].num_weights; k++) {
                 if (k > 0) printf(", ");
-                printf("%f", nn->layers[i].neurons[j].weights[k]);
+                printf("%f (%f)", nn->layers[i].neurons[j].weights[k], nn->layers[i].neurons[j].weights_grad[k]);
             }
-            printf("]\n");
+            printf("] %f (%f)\n", nn->layers[i].neurons[j].bias, nn->layers[i].neurons[j].bias_grad);
         }
     }
 }
@@ -115,7 +136,7 @@ void visualiseNN(NN* nn) {
 int main() {
     int nin = 3; // Number of input features
     int nout = 2; // Number of output neurons
-    int nlayers = 30; // Total number of layers
+    int nlayers = NUM_LAYERS; // Total number of layers
 
     srand(42); // Seed for reproducibility
     NN* nn = createNN(nin, nout, nlayers);
@@ -201,14 +222,15 @@ int main() {
         for (int l = 0; l < nn->num_layers; l++) {
             for (int m = 0; m < nn->layers[l].num_neurons; m++) {
                 Neuron* neuron = &nn->layers[l].neurons[m];
-                neuron->bias -= 0.0001 * neuron->bias_grad / 3; // Update bias
+                neuron->bias -= LEARNING_RATE * neuron->bias_grad / 3; // Update bias
 
                 for (int k = 0; k < neuron->num_weights; k++) {
-                    neuron->weights[k] -= 0.0001 * neuron->weights_grad[k] / 3; // Update weights
+                    neuron->weights[k] -= LEARNING_RATE * neuron->weights_grad[k] / 3; // Update weights
                 }
             }
         }
     }
+    visualiseNN(nn);
 
     return 0;
 }
