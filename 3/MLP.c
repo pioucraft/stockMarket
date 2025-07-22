@@ -157,14 +157,14 @@ int calculate_grad(NN* nn, TYPE* inputs[], TYPE* outputs[], int samples_count) {
     return 0;
 }
 
-int optimise_parameters(NN* nn, TYPE learning_rate) {
+int optimise_parameters(NN* nn, TYPE learning_rate, int sample_size) {
     for (int l = 0; l < nn->num_layers; l++) {
         for (int m = 0; m < nn->layers[l].num_neurons; m++) {
             Neuron* neuron = &nn->layers[l].neurons[m];
-            neuron->bias -= learning_rate * neuron->bias_grad / 3; // Update bias
+            neuron->bias -= learning_rate * neuron->bias_grad / sample_size; // Update bias
 
             for (int k = 0; k < neuron->num_weights; k++) {
-                neuron->weights[k] -= learning_rate * neuron->weights_grad[k] / 3; // Update weights
+                neuron->weights[k] -= learning_rate * neuron->weights_grad[k] / sample_size; // Update weights
             }
         }
     }

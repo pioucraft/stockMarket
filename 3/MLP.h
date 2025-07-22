@@ -36,7 +36,7 @@ int reset_grad(NN* nn);
 
 int calculate_grad(NN* nn, TYPE* inputs[], TYPE* outputs[], int samples_count);
 
-int optimise_parameters(NN* nn, TYPE learning_rate);
+int optimise_parameters(NN* nn, TYPE learning_rate, int sample_size);
 
 void visualiseNN(NN* nn);
 
