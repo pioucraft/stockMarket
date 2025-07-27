@@ -10,6 +10,13 @@
 #define NUM_LAYERS 3
 #define TRAINING_CYCLES 100
 
+#define RED "\033[31m"
+#define GREEN "\033[32m"
+#define YELLOW "\033[33m"
+#define BLUE "\033[34m"
+#define RESET "\033[0m"
+
+
 
 // Read big-endian 4-byte integer
 uint32_t read_uint32(FILE *fp) {
@@ -146,16 +153,27 @@ int main() {
         }
         printf("Cycle %d: Gradients calculated and parameters updated.\n", i);
 
+
         TYPE* output = callNN(nn, inputs[num_images + i]);
         for(int k = 0; k < rows * cols; k++) {
             if (k > 0 && k % cols == 0) {
                 printf("\n");
             }
-            printf("%c", (inputs[num_images + i][k] > 0.5) ? '#' : '.');
+            if( inputs[num_images + i][k] > 0.5) {
+                printf(BLUE "#");
+            } else {
+                printf(".");
+            }
+            printf(RESET);
         }
         printf("\nOutput: ");
         for(int k = 0; k < nout; k++) {
-            printf("%d: %f ", k, output[k]);
+            if (output[k] > 0.7) {
+                printf(GREEN "%d: %f " RESET, k, output[k]);
+            } else {
+                printf(RED "%d: %f " RESET, k, output[k]);
+            }
+            printf(RESET);
         }
         printf("Actual: %d\n\n", labels[num_images + i]);
 
