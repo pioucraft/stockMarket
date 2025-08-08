@@ -104,7 +104,7 @@ int main() {
         }
     }
 
-    num_images = 3000; // Limit to 3000 images for training
+    num_images = 6000; // Limit to num_images images for training
 
     // print the first input and output
     /*
